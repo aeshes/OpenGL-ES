@@ -27,6 +27,17 @@ EGLDisplay InitEGL()
 	return display;
 }
 
+EGLConfig GetConfig(EGLDisplay _display, EGLint *_attribs)
+{
+	EGLConfig config;
+	EGLint numConfigs;
+	if (EGL_FALSE == eglChooseConfig(_display, _attribs, &config, 1, &numConfigs))
+	{
+		return nullptr;
+	}
+	return config;
+}
+
 EGLSurface CreateSurface(EGLDisplay _display, EGLNativeWindowType _window)
 {
 	const EGLint MaxConfigs = 10;
@@ -111,6 +122,26 @@ int main()
 	EGLDisplay display = InitEGL();
 	EGLSurface surface = CreateSurface(display, (EGLNativeWindowType)GetDC(hWnd));
 
+	EGLint contextAttribs[] = 
+	{
+		EGL_CONTEXT_CLIENT_VERSION, 2,
+		EGL_NONE
+	};
+
+	EGLint configAttribs[] =
+	{
+		EGL_RENDERABLE_TYPE, EGL_WINDOW_BIT,
+		EGL_RED_SIZE,   8,
+		EGL_GREEN_SIZE, 8,
+		EGL_BLUE_SIZE,  8,
+		EGL_DEPTH_SIZE, 24,
+		EGL_NONE
+	};
+
+	EGLConfig  config  = GetConfig(display, configAttribs);
+	EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, contextAttribs);
+
+	eglMakeCurrent(display, surface, surface, context);
 
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0))
