@@ -22,6 +22,13 @@ private:
 	ResourceType resource{};
 };
 
+template <typename ResourceType>
+auto& GetResource()
+{
+	static ResourceType resource;
+	return resource;
+}
+
 using Display = Resource<struct DisplayTag, EGLDisplay>;
 template<> Display::Resource()
 {
@@ -39,12 +46,6 @@ template<> Display::Resource()
 	}
 }
 
-Display& GetDisplay()
-{
-	static Display display;
-	return display;
-}
-
 using Config = Resource<struct ConfigTag, EGLConfig>;
 template<> Config::Resource()
 {
@@ -60,7 +61,7 @@ template<> Config::Resource()
 		EGL_NONE
 	};
 
-	EGLDisplay display = GetDisplay().get();
+	EGLDisplay display = GetResource<Display>().get();
 
 	if (EGL_FALSE == eglChooseConfig(display, configAttribs, &resource, 1, &numConfig))
 	{
@@ -68,82 +69,28 @@ template<> Config::Resource()
 	}
 }
 
-Config& GetConfig()
-{
-	static Config config;
-	return config;
-}
-
-
-EGLConfig GetConfig(EGLDisplay _display, EGLint *_attribs)
-{
-	EGLConfig config;
-	EGLint numConfigs;
-	if (EGL_FALSE == eglChooseConfig(_display, _attribs, &config, 1, &numConfigs))
-	{
-		return nullptr;
-	}
-	return config;
-}
-
 EGLSurface CreateSurface(EGLDisplay _display, EGLNativeWindowType _window)
 {
-	const EGLint MaxConfigs = 10;
-	EGLConfig configs[MaxConfigs];
+	EGLConfig config = GetResource<Config>().get();
+	
+	EGLSurface surface = eglCreateWindowSurface(_display, config, _window, NULL);
 
-	EGLint attribList[] = 
+	if (EGL_NO_SURFACE == surface)
 	{
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-		EGL_RED_SIZE,   5,
-		EGL_GREEN_SIZE, 6,
-		EGL_BLUE_SIZE,  5,
-		EGL_DEPTH_SIZE, 1,
-		EGL_NONE
-	};
-
-	EGLint configAttribs[] =
-	{
-		EGL_RENDERABLE_TYPE, EGL_WINDOW_BIT,
-		EGL_RED_SIZE,   8,
-		EGL_GREEN_SIZE, 8,
-		EGL_BLUE_SIZE,  8,
-		EGL_DEPTH_SIZE, 24,
-		EGL_NONE
-	};
-
-	EGLint numConfigs;
-	if (EGL_FALSE == eglChooseConfig(_display, configAttribs, configs, MaxConfigs, &numConfigs))
-	{
-		std::cout << "Unable to choose config" << std::endl;
-	}
-	else
-	{
-		EGLSurface surface;
-		EGLint attribList[] = 
+		switch (eglGetError())
 		{
-			EGL_RENDER_BUFFER, EGL_BACK_BUFFER,
-			EGL_NONE
-		};
-
-		surface = eglCreateWindowSurface(_display, configs[0], _window, NULL);
-
-		if (EGL_NO_SURFACE == surface)
-		{
-			switch (eglGetError())
-			{
-			case EGL_BAD_MATCH:
-				break;
-			case EGL_BAD_CONFIG:
-				break;
-			case EGL_BAD_NATIVE_WINDOW:
-				break;
-			case EGL_BAD_ALLOC:
-				break;
-			}
+		case EGL_BAD_MATCH:
+			break;
+		case EGL_BAD_CONFIG:
+			break;
+		case EGL_BAD_NATIVE_WINDOW:
+			break;
+		case EGL_BAD_ALLOC:
+			break;
 		}
-		else return surface;
 	}
-	return nullptr;
+	
+	return surface;
 }
 
 EGLContext CreateContext(EGLDisplay _display, EGLConfig _config)
@@ -171,19 +118,6 @@ EGLContext CreateContext(EGLDisplay _display, EGLConfig _config)
 	return context;
 }
 
-void displayMe(void)
-{
-	GLfloat vVertices[] =
-	{
-		 0.0f,  0.5f, 0.0f,
-		-0.5f, -0.5f, 0.0f,
-		 0.5f, -0.5f, 0.0f
-	};
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, vVertices);
-	glEnableVertexAttribArray(0);
-	glDrawArrays(GL_TRIANGLES, 0, 3);
-}
-
 
 int main()
 {
@@ -191,7 +125,7 @@ int main()
 	win.show();
 
 	HWND hWnd = win.handle();
-	EGLDisplay display = GetDisplay().get();
+	EGLDisplay display = GetResource<Display>().get();
 	EGLSurface surface = CreateSurface(display, (EGLNativeWindowType)GetDC(hWnd));
 
 	EGLint contextAttribs[] = 
@@ -200,7 +134,7 @@ int main()
 		EGL_NONE
 	};
 
-	EGLConfig  config  = GetConfig().get();
+	EGLConfig  config  = GetResource<Config>().get();
 	EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, contextAttribs);
 
 	eglMakeCurrent(display, surface, surface, context);
