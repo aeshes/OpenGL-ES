@@ -7,25 +7,73 @@
 #include "win.h"
 
 
-EGLDisplay InitEGL()
+template <typename ResourceTag, typename ResourceType>
+class Resource
 {
+public:
+	Resource();
+	
+	Resource(const Resource&) = delete;
+	Resource& operator=(const Resource&) = delete;
+
+	ResourceType get() { return resource; }
+
+private:
+	ResourceType resource{};
+};
+
+using Display = Resource<struct DisplayTag, EGLDisplay>;
+template<> Display::Resource()
+{
+	resource = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+	if (resource == EGL_NO_DISPLAY)
+	{
+		throw std::runtime_error("Unable to get display");
+	}
+
 	EGLint major;
 	EGLint minor;
-	EGLDisplay display;
-
-	display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-	if (EGL_NO_DISPLAY == display)
+	if (EGL_FALSE == eglInitialize(resource, &major, &minor))
 	{
-		std::cout << "Unable to open connection to loccal windowing system" << std::endl;
+		throw std::runtime_error("Unable to initialize OpenGL");
 	}
+}
 
-	if (EGL_FALSE == eglInitialize(display, &major, &minor))
-	{
-		std::cout << "Unable to initialize EGL" << std::endl;
-	}
-
+Display& GetDisplay()
+{
+	static Display display;
 	return display;
 }
+
+using Config = Resource<struct ConfigTag, EGLConfig>;
+template<> Config::Resource()
+{
+	EGLint numConfig;
+
+	EGLint configAttribs[] =
+	{
+		EGL_RENDERABLE_TYPE, EGL_WINDOW_BIT,
+		EGL_RED_SIZE,   8,
+		EGL_GREEN_SIZE, 8,
+		EGL_BLUE_SIZE,  8,
+		EGL_DEPTH_SIZE, 24,
+		EGL_NONE
+	};
+
+	EGLDisplay display = GetDisplay().get();
+
+	if (EGL_FALSE == eglChooseConfig(display, configAttribs, &resource, 1, &numConfig))
+	{
+		throw std::runtime_error("Unable to choose config");
+	}
+}
+
+Config& GetConfig()
+{
+	static Config config;
+	return config;
+}
+
 
 EGLConfig GetConfig(EGLDisplay _display, EGLint *_attribs)
 {
@@ -53,8 +101,18 @@ EGLSurface CreateSurface(EGLDisplay _display, EGLNativeWindowType _window)
 		EGL_NONE
 	};
 
+	EGLint configAttribs[] =
+	{
+		EGL_RENDERABLE_TYPE, EGL_WINDOW_BIT,
+		EGL_RED_SIZE,   8,
+		EGL_GREEN_SIZE, 8,
+		EGL_BLUE_SIZE,  8,
+		EGL_DEPTH_SIZE, 24,
+		EGL_NONE
+	};
+
 	EGLint numConfigs;
-	if (EGL_FALSE == eglChooseConfig(_display, attribList, configs, MaxConfigs, &numConfigs))
+	if (EGL_FALSE == eglChooseConfig(_display, configAttribs, configs, MaxConfigs, &numConfigs))
 	{
 		std::cout << "Unable to choose config" << std::endl;
 	}
@@ -113,13 +171,27 @@ EGLContext CreateContext(EGLDisplay _display, EGLConfig _config)
 	return context;
 }
 
+void displayMe(void)
+{
+	GLfloat vVertices[] =
+	{
+		 0.0f,  0.5f, 0.0f,
+		-0.5f, -0.5f, 0.0f,
+		 0.5f, -0.5f, 0.0f
+	};
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, vVertices);
+	glEnableVertexAttribArray(0);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+}
+
+
 int main()
 {
 	window win("Hello!", 320, 240);
 	win.show();
 
 	HWND hWnd = win.handle();
-	EGLDisplay display = InitEGL();
+	EGLDisplay display = GetDisplay().get();
 	EGLSurface surface = CreateSurface(display, (EGLNativeWindowType)GetDC(hWnd));
 
 	EGLint contextAttribs[] = 
@@ -128,17 +200,7 @@ int main()
 		EGL_NONE
 	};
 
-	EGLint configAttribs[] =
-	{
-		EGL_RENDERABLE_TYPE, EGL_WINDOW_BIT,
-		EGL_RED_SIZE,   8,
-		EGL_GREEN_SIZE, 8,
-		EGL_BLUE_SIZE,  8,
-		EGL_DEPTH_SIZE, 24,
-		EGL_NONE
-	};
-
-	EGLConfig  config  = GetConfig(display, configAttribs);
+	EGLConfig  config  = GetConfig().get();
 	EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, contextAttribs);
 
 	eglMakeCurrent(display, surface, surface, context);
